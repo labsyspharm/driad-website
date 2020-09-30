@@ -18,3 +18,5 @@ Imports:
     tidyr,
     shiny,
     yonder
+Depends: 
+    R (>= 2.10)
