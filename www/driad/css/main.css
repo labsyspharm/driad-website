@@ -1,0 +1,4 @@
+/* Fix display of selectize input labels without text */
+  .shiny-label-null {
+    display: inline;
+  }
