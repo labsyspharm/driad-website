@@ -24,7 +24,6 @@ prediction_tasks <- tribble(
   select(-path) %>%
   ungroup()
 
-
 gene_symbols <- prediction_tasks %>%
   rowwise() %>%
   mutate(
@@ -32,6 +31,6 @@ gene_symbols <- prediction_tasks %>%
   ) %>%
   pull(task) %>%
   map(colnames) %>%
-  reduce(union)
+  reduce(intersect)
 
 usethis::use_data(prediction_tasks, overwrite = TRUE, internal = FALSE, compress = "xz", version = 3)

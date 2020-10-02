@@ -72,7 +72,7 @@ app_ui <- function() {
     tags$head(
       tags$title("Drug Repurposing in Alzheimer's Disease"),
       tags$link(href="https://fonts.googleapis.com/css?family=Lato:400,700&display=swap", rel="stylesheet"),
-      tags$link(rel = "stylesheet", type = "text/css", href = "driad/css/driad-flatly.min.css"),
+      # tags$link(rel = "stylesheet", type = "text/css", href = "driad/css/driad-flatly.css"),
       tags$link(rel = "stylesheet", type = "text/css", href = "driad/css/main.css"),
       # tags$script(src = "sms/js/main.js"),
       # tags$link(rel = "icon", type = "image/png", href = "sms/assets/img/favicon.png")
