@@ -3,6 +3,27 @@ library(DRIAD)
 library(DT)
 
 MAX_GENE_SETS <- 50
+MIN_N <- 5
+MAX_N <- 300
+
+run_driad <- function(gene_sets, datasets, comparisons) {
+  prediction_tasks %>%
+    mutate(
+      dataset = paste0(dataset, " - ", brain_region)
+    ) %>%
+    filter(dataset %in% datasets, comparison %in% comparisons) %>%
+    rowwise() %>%
+    mutate(
+      task = prediction_task_data[[id]]["task"],
+      pairs = prediction_task_data[[id]]["pairs"],
+      res = evalGeneSets(
+        gene_sets, task, pairs
+      ) %>%
+        list()
+    ) %>%
+    unnest(res) %>%
+    select(-id)
+}
 
 #' Server module providing UI logic for DRIAD gene set evaluation
 mod_server_driad_prediction <- function(
@@ -17,6 +38,16 @@ mod_server_driad_prediction <- function(
       input$single_multi_choice,
       single = showNavPane(ns("pane_single")),
       multi = showNavPane(ns("pane_multi"))
+    )
+  })
+
+  observe({
+    req(input$results_nav)
+
+    switch(
+      input$results_nav,
+      plots = showNavPane(ns("pane_plots")),
+      table = showNavPane(ns("pane_table"))
     )
   })
 
@@ -37,20 +68,23 @@ mod_server_driad_prediction <- function(
         req(input$gene_set_upload)
         file <- input$gene_set_upload
         ext <- tools::file_ext(file$datapath)
-        df <- switch(
+        gene_sets <- switch(
           ext,
-          "csv" = read_csv(file$datapath),
-          "tsv" = read_tsv(file$datapath),
-          "xlsx" = readxl::read_excel(file$datapath)
+          "csv" = read_csv(file$datapath) %>%
+            as.list(),
+          "tsv" = read_tsv(file$datapath) %>%
+            as.list(),
+          "xlsx" = readxl::read_excel(file$datapath) %>%
+            as.list(),
+          "gmt" = DRIAD::read_gmt(file$datapath)
         )
         shiny::validate(
           need(
-            ncol(df) <= MAX_GENE_SETS,
+            length(gene_sets) <= MAX_GENE_SETS,
             paste("Number of gene sets must be", MAX_GENE_SETS, "or below.")
           )
         )
-        df %>%
-          as.list() %>%
+        gene_sets %>%
           map(na.omit)
       }
     )
@@ -107,26 +141,22 @@ mod_server_driad_prediction <- function(
         "Must supply a gene set with at least one valid gene."
       )
     )
-    # ds <- preinput$datasets[1]
-    # comp <- input$comparison
-    task <- prediction_tasks %>%
-      mutate(
-        ds = paste0(dataset, " - ", brain_region)
-      ) %>%
-      filter(ds == input$datasets[1], comparison == input$comparison)
-    x <- evalGeneSets(
-      r_gene_sets_valid()[["valid"]], task$task[[1]], task$pairs[[1]]
-    )
-    r_results(x)
+    run_driad(
+      r_gene_sets_valid()[["valid"]],
+      input$datasets,
+      input$comparison
+    ) %>%
+      r_results()
   })
 
-  output$results <- renderDT(
-    {
-      # browser()
-      req(r_results())
-      select(r_results(), Set, AUC, pval)
-    }
-  )
+  output$results <- renderDT({
+    datatable(
+      if (!is.null(r_results()))
+        select(r_results(), -task, -pairs),
+      style = "bootstrap4",
+      selection = "none"
+    )
+  })
 }
 
 #' Server module providing UI elements for DRIAD gene set evaluation
@@ -179,7 +209,8 @@ mod_ui_driad_prediction <- function(id) {
                   "text/csv",
                   "text/tab-separated-values",
                   "application/vnd.ms-excel",
-                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                  ".gmt"
                 )
               )
             ) %>%
@@ -222,12 +253,39 @@ mod_ui_driad_prediction <- function(id) {
           margin(b = 0)
       )
     ) %>%
-      margin(b = 2),
-    actionButton(
-      inputId = ns("submit"),
-      label = "Submit",
-      class = "btn-primary"
-    ),
-    dataTableOutput(outputId = ns("results"))
+      margin(b = 3),
+    div(
+      actionButton(
+        inputId = ns("submit"),
+        label = "Submit",
+        class = "btn-primary"
+      )
+    ) %>%
+      margin(b = 3),
+    card(
+      header = tagList(
+        h4("Results"),
+        navInput(
+          id = ns("results_nav"),
+          choices = c("Table", "Plots"),
+          values  = c("table", "plots"),
+          class = "card-header-tabs",
+          appearance = "tabs",
+          selected = "table"
+        )
+      ),
+      navContent(
+        navPane(
+          id = ns("pane_table"),
+          dataTableOutput(
+            outputId = ns("results")
+          )
+        ),
+        navPane(
+          id = ns("pane_plots"),
+          p("daff")
+        )
+      )
+    )
   )
 }
