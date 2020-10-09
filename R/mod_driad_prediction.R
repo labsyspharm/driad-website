@@ -1,10 +1,15 @@
 library(tidyverse)
 library(DRIAD)
 library(DT)
+library(promises)
+library(future)
+library(ggridges)
+plan(multicore)
 
 MAX_GENE_SETS <- 50
 MIN_N <- 5
 MAX_N <- 300
+N_BK = 2
 
 run_driad <- function(gene_sets, datasets, comparisons) {
   prediction_tasks %>%
@@ -17,7 +22,7 @@ run_driad <- function(gene_sets, datasets, comparisons) {
       task = prediction_task_data[[id]]["task"],
       pairs = prediction_task_data[[id]]["pairs"],
       res = evalGeneSets(
-        gene_sets, task, pairs
+        gene_sets, task, pairs, nBK = N_BK
       ) %>%
         list()
     ) %>%
@@ -141,20 +146,74 @@ mod_server_driad_prediction <- function(
         "Must supply a gene set with at least one valid gene."
       )
     )
-    run_driad(
-      r_gene_sets_valid()[["valid"]],
-      input$datasets,
-      input$comparison
-    ) %>%
-      r_results()
+    p <- Progress$new()
+    p$set(value = NULL, message = "Evaluating gene sets...")
+    valid_gene_sets <- r_gene_sets_valid()[["valid"]]
+    datasets <- input$datasets
+    comparison <- input$comparison
+    # res_future <- future(
+    #   {
+    #     run_driad(
+    #       valid_gene_sets,
+    #       datasets,
+    #       comparison
+    #     )
+    #   },
+    #   packages = c("dplyr", "magrittr", "DRIAD"),
+    #   globals = "prediction_task_data",
+    #   seed = 1
+    # )
+    # res <- value(res_future)
+    res <- run_driad(
+      valid_gene_sets,
+      datasets,
+      comparison
+    )
+    p$close()
+    r_results(res)
+  })
+
+  output$plots <- renderPlot({
+    if (is.null(r_results()))
+      return(NULL)
+    .data <- select(r_results(), -task, -pairs) %>%
+      mutate(across(c(Set, dataset), as.factor))
+    # browser()
+    BK <- .data %>%
+      select(Set, dataset, AUC = BK) %>%
+      unnest(AUC)
+    ggplot(BK, aes(x = AUC, y = Set)) +
+      facet_wrap(~dataset) +
+      theme_ridges() +
+      geom_density_ridges2() +
+      geom_segment(
+        aes(x = AUC, xend = AUC, y = as.numeric(Set), yend = as.numeric(Set) + 0.9),
+        data = .data,
+        color = "darkgray",
+        lwd = 2
+      ) +
+      coord_cartesian(clip = "off")
   })
 
   output$results <- renderDT({
+    .data <- if (!is.null(r_results()))
+      select(r_results(), -task, -pairs)
+    browser()
     datatable(
-      if (!is.null(r_results()))
-        select(r_results(), -task, -pairs),
+      .data,
       style = "bootstrap4",
-      selection = "none"
+      selection = "none",
+      options = list(
+        columnDefs = list(
+          list(
+            targets = match(
+              c("Feats", "BK"),
+              colnames(.data)
+            ),
+            visible = FALSE
+          )
+        )
+      )
     )
   })
 }
@@ -283,7 +342,9 @@ mod_ui_driad_prediction <- function(id) {
         ),
         navPane(
           id = ns("pane_plots"),
-          p("daff")
+          plotOutput(
+            outputId = ns("plots")
+          )
         )
       )
     )
