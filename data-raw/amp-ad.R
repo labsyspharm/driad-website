@@ -1,6 +1,8 @@
 library(DRIAD)
 library(tidyverse)
 library(here)
+library(furrr)
+library(carrier)
 
 fnROSMAP <- wrangleROSMAP(tempdir())
 # fnMSBB <- Sys.glob(here::here("data-raw", "msbb*.tsv.gz"))
@@ -30,10 +32,16 @@ prediction_tasks_all <- tribble(
     id = paste0("prediction_task_", 1:n())
   )
 
+write_rds(
+  prediction_tasks_all,
+  here("data", paste0("prediction_tasks_all", ".rda")),
+  compress = "xz"
+)
+
 pmap(
   prediction_tasks_all,
   function(task, pairs, id, ...) {
-    browser()
+    # browser()
     x <- list(task = task, pairs = pairs)
     write_rds(
       x,
@@ -71,30 +79,74 @@ write_rds(
   compress = "xz"
 )
 
-# gene_set_sizes <- c(
-#   5:29,
-#   seq(30, 300, by = 5)
-# )
-#
-# prediction_tasks_bk <- prediction_tasks %>%
-#   select(-pairs) %>%
-#   crossing(
-#     gene_set_size = gene_set_sizes
-#   ) %>%
-#   rowwise() %>%
-#   mutate(
-#     background_sets = DRIAD:::genBK(
-#       gene_symbols[1:gene_set_size],
-#       task,
-#       1000
-#     ) %>%
-#       list()
-#   ) %>%
-#   ungroup() %>%
-#   select(-task) %>%
-#   mutate(
-#     id = paste0("prediction_task_background_", 1:n())
-#   )
+gene_set_sizes <- c(
+  5:29,
+  seq(30, 300, by = 5)
+)
+
+prediction_tasks_bk_gene_sets <- prediction_tasks_all %>%
+  mutate(
+    data = tibble(gene_set_size = gene_set_sizes) %>%
+      list()
+  ) %>%
+  mutate(
+    data = pmap(
+      list(task, data),
+      function(task, df) {
+        df %>%
+          rowwise() %>%
+          mutate(
+            background_sets = DRIAD:::genBK(
+              valid_gene_symbols[1:gene_set_size],
+              task,
+              1000
+            ) %>%
+              set_names(., paste0("BK_", seq_along(.))) %>%
+              list()
+          ) %>%
+          ungroup()
+      }
+    )
+  )
+# %>%
+  # mutate(
+  #   id = paste0("prediction_task_background_", 1:n())
+  # )
+
+plan(sequential(workers = 1))
+
+eval_gene_sets <- crate(
+  function(task, pairs, df) {
+    df %>%
+      dplyr::rowwise() %>%
+      dplyr::mutate(
+        background_auc = DRIAD::evalGeneSets(
+          background_sets,
+          task,
+          pairs
+        ) %>%
+          list()
+      ) %>%
+      dplyr::ungroup()
+  },
+  `%>%` = `%>%`
+)
+
+plan(multisession(workers = 8))
+# plan(sequential)
+prediction_tasks_bk_auc <- prediction_tasks_bk_gene_sets %>%
+  mutate(
+    data = pmap(
+      list(
+        task,
+        pairs,
+        data
+      ),
+      eval_gene_sets
+    ),
+    # .progress = TRUE,
+    # options = future_options(globals = FALSE, scheduling = FALSE)
+  )
 #
 # pmap(
 #   prediction_tasks_bk,
