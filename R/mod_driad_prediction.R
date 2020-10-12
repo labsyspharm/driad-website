@@ -1,32 +1,59 @@
+library(here)
 library(tidyverse)
 library(DRIAD)
 library(DT)
 library(promises)
 library(future)
 library(ggridges)
+library(memoise)
 plan(multicore)
 
 MAX_GENE_SETS <- 50
 MIN_N <- 5
 MAX_N <- 300
-N_BK = 2
+
+BK_GENE_SET_SIZES <- c(
+  5:29,
+  seq(30, 300, by = 5)
+)
+
+# JAK3, BCL2, TP53, EGFR, TYK2
+
+prediction_tasks <- read_rds(here("data", "prediction_tasks.rda"))
+valid_gene_symbols <- read_rds(here("data", "valid_gene_symbols.rda"))
+background_gene_sets_auc <- read_rds(here("data", "background_gene_sets_auc.rds"))
+
+prediction_task_data <- memoise(
+  function(x) {
+    read_rds(here("data", paste0(x, ".rds")))
+  }
+)
 
 run_driad <- function(gene_sets, datasets, comparisons) {
+  # browser()
   prediction_tasks %>%
-    mutate(
-      dataset = paste0(dataset, " - ", brain_region)
-    ) %>%
-    filter(dataset %in% datasets, comparison %in% comparisons) %>%
+    filter(paste0(dataset, " - ", brain_region) %in% datasets, comparison %in% comparisons) %>%
     rowwise() %>%
     mutate(
-      task = prediction_task_data[[id]]["task"],
-      pairs = prediction_task_data[[id]]["pairs"],
+      task = prediction_task_data(id)["task"],
+      pairs = prediction_task_data(id)["pairs"],
       res = evalGeneSets(
-        gene_sets, task, pairs, nBK = N_BK
+        gene_sets, task, pairs, nBK = 0
       ) %>%
+        mutate(
+          n_genes = map_int(Feats, length),
+          n_genes_bk = BK_GENE_SET_SIZES[findInterval(n_genes, BK_GENE_SET_SIZES)]
+        ) %>%
         list()
     ) %>%
+    ungroup() %>%
     unnest(res) %>%
+    select(-BK) %>%
+    inner_join(
+      rename(background_gene_sets_auc, BK = background_auc),
+      by = c("dataset", "brain_region", "comparison", "n_genes_bk" = "gene_set_size")
+    ) %>%
+    mutate(pval = map2_dbl(AUC, BK, ~`if`(length(.y) == 0, NA, mean(.x <= .y)))) %>%
     select(-id)
 }
 
@@ -95,7 +122,7 @@ mod_server_driad_prediction <- function(
     )
   })
 
-  r_gene_sets_valid <- reactive({
+  r_gene_sets_cleaned <- reactive({
     req(r_gene_sets_raw())
 
     valid_mask <- r_gene_sets_raw() %>%
@@ -108,6 +135,13 @@ mod_server_driad_prediction <- function(
     )
   })
 
+  r_gene_sets_valid <- reactive({
+    req(r_gene_sets_cleaned())
+
+    r_gene_sets_cleaned()[["valid"]] %>%
+      keep(~length(.x) >= MIN_N && length(.x) <= MAX_N)
+  })
+
   output$gene_set_info <- renderUI({
     gene_sets <- tryCatch(
       r_gene_sets_valid(),
@@ -115,12 +149,12 @@ mod_server_driad_prediction <- function(
     )
     if (is.null(gene_sets))
       return("No gene sets submitted.")
-    gene_set_lengths <- map_int(r_gene_sets_valid()[["valid"]], length)
-    invalid_symbols <- r_gene_sets_valid()[["invalid"]] %>%
+    gene_set_lengths <- map_int(r_gene_sets_valid(), length)
+    invalid_symbols <- r_gene_sets_cleaned()[["invalid"]] %>%
       reduce(union)
     tagList(
       p(
-        length(r_gene_sets_valid()[["valid"]]),
+        length(r_gene_sets_valid()),
         "gene set(s) with between",
         min(gene_set_lengths), "and",
         max(gene_set_lengths), "genes."
@@ -142,13 +176,13 @@ mod_server_driad_prediction <- function(
     )
     validate(
       need(
-        any(map_lgl(r_gene_sets_valid()[["valid"]], ~length(.x) > 0)),
-        "Must supply a gene set with at least one valid gene."
+        length(r_gene_sets_valid()) > 0,
+        paste("Must supply a gene set with at least", MIN_N, "valid gene.")
       )
     )
     p <- Progress$new()
     p$set(value = NULL, message = "Evaluating gene sets...")
-    valid_gene_sets <- r_gene_sets_valid()[["valid"]]
+    valid_gene_sets <- r_gene_sets_valid()
     datasets <- input$datasets
     comparison <- input$comparison
     # res_future <- future(
@@ -177,6 +211,7 @@ mod_server_driad_prediction <- function(
     if (is.null(r_results()))
       return(NULL)
     .data <- select(r_results(), -task, -pairs) %>%
+      mutate(dataset = paste0(dataset, " - ", brain_region)) %>%
       mutate(across(c(Set, dataset), as.factor))
     # browser()
     BK <- .data %>%
@@ -198,7 +233,6 @@ mod_server_driad_prediction <- function(
   output$results <- renderDT({
     .data <- if (!is.null(r_results()))
       select(r_results(), -task, -pairs)
-    browser()
     datatable(
       .data,
       style = "bootstrap4",

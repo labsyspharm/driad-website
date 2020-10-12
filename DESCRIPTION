@@ -21,6 +21,10 @@ Imports:
     yonder,
     DT,
     DRIAD,
-    here
+    here,
+    memoise,
+    future,
+    promises,
+    ggridges
 Depends: 
     R (>= 2.10)
