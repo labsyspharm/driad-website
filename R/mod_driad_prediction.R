@@ -116,10 +116,11 @@ mod_server_driad_prediction <- function(
             paste("Number of gene sets must be", MAX_GENE_SETS, "or below.")
           )
         )
-        gene_sets %>%
-          map(na.omit)
+        gene_sets
       }
-    )
+    ) %>%
+      map(na.omit) %>%
+      map(unique)
   })
 
   r_gene_sets_cleaned <- reactive({
@@ -136,25 +137,25 @@ mod_server_driad_prediction <- function(
   })
 
   r_gene_sets_valid <- reactive({
-    req(r_gene_sets_cleaned())
+    req(r_gene_sets_cleaned(), r_gene_sets_cleaned())
 
     r_gene_sets_cleaned()[["valid"]] %>%
       keep(~length(.x) >= MIN_N && length(.x) <= MAX_N)
   })
 
   output$gene_set_info <- renderUI({
-    gene_sets <- tryCatch(
-      r_gene_sets_valid(),
-      error = function(e) NULL
-    )
-    if (is.null(gene_sets))
-      return("No gene sets submitted.")
-    gene_set_lengths <- map_int(r_gene_sets_valid(), length)
+    req(r_gene_sets_valid(), r_gene_sets_cleaned())
+    gene_set_lengths <- map_int(r_gene_sets_cleaned()[["valid"]], length)
     invalid_symbols <- r_gene_sets_cleaned()[["invalid"]] %>%
-      reduce(union)
+      reduce(union) %>%
+      unique()
     tagList(
+      if (length(r_gene_sets_valid()) == 0)
+        p(class = "text-danger", "No valid gene sets.")
+      else
+        p(length(r_gene_sets_valid()), "valid gene set(s)."),
       p(
-        length(r_gene_sets_valid()),
+        length(gene_set_lengths),
         "gene set(s) with between",
         min(gene_set_lengths), "and",
         max(gene_set_lengths), "genes."
@@ -224,7 +225,7 @@ mod_server_driad_prediction <- function(
       geom_segment(
         aes(x = AUC, xend = AUC, y = as.numeric(Set), yend = as.numeric(Set) + 0.9),
         data = .data,
-        color = "darkgray",
+        color = "red",
         lwd = 2
       ) +
       coord_cartesian(clip = "off")
@@ -261,6 +262,11 @@ mod_ui_driad_prediction <- function(id) {
       card(
         header = tagList(
           h4("Gene set"),
+          p(
+            "Gene sets are evaluated for their ability to predict Alzheimer's",
+            "disease progression from gene expression data."
+          ),
+          p("Gene sets must be between", MIN_N, "and", MAX_N, "genes in length."),
           navInput(
             appearance = "tabs",
             id = ns("single_multi_choice"),
