@@ -6,6 +6,7 @@ library(promises)
 library(future)
 library(ggridges)
 library(memoise)
+library(shinyjs)
 plan(multicore)
 
 MAX_GENE_SETS <- 50
@@ -187,6 +188,8 @@ mod_server_driad_prediction <- function(
         paste("Must supply a gene set with at least", MIN_N, "valid gene.")
       )
     )
+    disable(id = "submit")
+    removeCssClass(class = "d-none", selector = paste0("#", ns("submit"), " .spinner-border"))
     p <- Progress$new()
     p$set(value = NULL, message = "Evaluating gene sets...")
     valid_gene_sets <- r_gene_sets_valid()
@@ -209,7 +212,14 @@ mod_server_driad_prediction <- function(
       seed = 1
     ) %...>%
       r_results() %>%
-      finally(~p$close())
+      finally(
+        function() {
+          p$close()
+          enable("submit")
+          addCssClass(class = "d-none", selector = paste0("#", ns("submit"), " .spinner-border"))
+        }
+      )
+    NULL
   })
 
   output$plots <- renderPlot({
@@ -387,7 +397,14 @@ mod_ui_driad_prediction <- function(id) {
     div(
       actionButton(
         inputId = ns("submit"),
-        label = "Submit",
+        label = tagList(
+          span(
+            class = "spinner-border spinner-border-sm d-none",
+            role = "status",
+            `aria-hidden` = "true"
+          ),
+          "Submit"
+        ),
         class = "btn-primary"
       )
     ) %>%

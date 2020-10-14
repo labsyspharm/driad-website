@@ -1,3 +1,4 @@
+library(shinyjs)
 
 app_navbar <- navbar(
   # class = "navbar-dark bg-dark",
@@ -75,7 +76,8 @@ app_ui <- function() {
       # tags$link(rel = "stylesheet", type = "text/css", href = "driad/css/driad-flatly.css"),
       tags$link(rel = "stylesheet", type = "text/css", href = "driad/css/main.css"),
       # tags$script(src = "sms/js/main.js"),
-      # tags$link(rel = "icon", type = "image/png", href = "sms/assets/img/favicon.png")
+      # tags$link(rel = "icon", type = "image/png", href = "sms/assets/img/favicon.png"),
+      useShinyjs()
     ),
     webpage(
       nav = app_navbar,
