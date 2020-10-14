@@ -17,6 +17,12 @@ BK_GENE_SET_SIZES <- c(
   seq(30, 300, by = 5)
 )
 
+DT_DOM <- paste0(
+  '<"row justify-content-between"<"col-sm-12 col-md-auto"l><"col-sm-12 col-md-auto"B>',
+  '<"col-sm-12 col-md-auto ml-md-auto"f>><"row"<"col-sm-12"t>><"row"<"col-sm-12 col-md-5"i>',
+  '<"col-sm-12 col-md-7"p>>'
+)
+
 # JAK3, BCL2, TP53, EGFR, TYK2
 
 prediction_tasks <- read_rds(here("data", "prediction_tasks.rda"))
@@ -186,31 +192,38 @@ mod_server_driad_prediction <- function(
     valid_gene_sets <- r_gene_sets_valid()
     datasets <- input$datasets
     comparison <- input$comparison
-    # res_future <- future(
-    #   {
-    #     run_driad(
-    #       valid_gene_sets,
-    #       datasets,
-    #       comparison
-    #     )
-    #   },
-    #   packages = c("dplyr", "magrittr", "DRIAD"),
-    #   globals = "prediction_task_data",
-    #   seed = 1
-    # )
-    # res <- value(res_future)
-    res <- run_driad(
-      valid_gene_sets,
-      datasets,
-      comparison
-    )
-    p$close()
-    r_results(res)
+    res_future <- future(
+      {
+        run_driad(
+          valid_gene_sets,
+          datasets,
+          comparison
+        )
+      },
+      packages = c("dplyr", "magrittr", "DRIAD"),
+      globals = c(
+        "prediction_task_data",
+        "background_gene_sets_auc",
+        "BK_GENE_SET_SIZES"
+      ),
+      seed = 1
+    ) %...>%
+      r_results() %>%
+      finally(~p$close())
   })
 
   output$plots <- renderPlot({
     if (is.null(r_results()))
-      return(NULL)
+      return(
+        ggplot(tibble()) +
+          annotation_custom(
+            grid::textGrob(
+              "No gene set submitted.",
+              gp = grid::gpar(fontsize = 16)
+            )
+          ) +
+          theme_void()
+      )
     .data <- select(r_results(), -task, -pairs) %>%
       mutate(dataset = paste0(dataset, " - ", brain_region)) %>%
       mutate(across(c(Set, dataset), as.factor))
@@ -234,11 +247,25 @@ mod_server_driad_prediction <- function(
   output$results <- renderDT({
     .data <- if (!is.null(r_results()))
       select(r_results(), -task, -pairs)
+    else
+      tibble(Set = character())
     datatable(
       .data,
       style = "bootstrap4",
       selection = "none",
+      extensions = "Buttons",
       options = list(
+        dom = DT_DOM,
+        buttons = list(
+          list(
+            extend = "colvis",
+            text = "Additional columns",
+            className = "btn-outline-primary"
+          )
+        ),
+        language = list(
+          emptyTable = "No gene set submitted."
+        ),
         columnDefs = list(
           list(
             targets = match(
@@ -283,7 +310,7 @@ mod_ui_driad_prediction <- function(id) {
             fade = FALSE,
             formGroup(
               label = tags$label(style = "display: none;"),
-              help = "Enter human gene symbols delimited by line breaks, commas, or tabs.",
+              help = "Enter human gene symbols delimited by line breaks, commas, spaces, or tabs.",
               textAreaInput(
                 inputId = ns("gene_set_single"),
                 label = NULL,
@@ -298,7 +325,11 @@ mod_ui_driad_prediction <- function(id) {
             fade = FALSE,
             formGroup(
               label = tags$label(style = "display: none;"),
-              help = "CSV, TSV or Excel file with one gene set per column. The first row should contain the gene set name.",
+              help = paste(
+                "CSV, TSV or Excel file with one gene set per column.",
+                "The first row should contain the gene set name.",
+                "GMT files are also accepted."
+              ),
               fileInput(
                 id = ns("gene_set_upload"),
                 placeholder = "Choose gene set file",

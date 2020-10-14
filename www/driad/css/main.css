@@ -1,4 +1,14 @@
 /* Fix display of selectize input labels without text */
-  .shiny-label-null {
-    display: none;
-  }
+.shiny-label-null {
+  display: none;
+}
+
+/* Fix background of table buttons */
+.btn.btn-secondary.btn-outline-primary {
+  background: transparent;
+}
+
+/* Fix additional arrows in table number entries selector */
+.custom-select.custom-select-sm.form-control {
+  background: transparent;
+}
