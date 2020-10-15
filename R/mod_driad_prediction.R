@@ -278,14 +278,20 @@ mod_server_driad_prediction <- function(
       coord_cartesian(clip = "off")
   })
 
+  r_results_formatted <- reactive({
+    if (is.null(r_results()))
+      return(NULL)
+    select(
+      r_results(),
+      gene_set = Set, dataset, brain_region, comparison, auc = AUC, pval,
+      n_genes, n_genes_background = n_genes_bk, genes = Feats,
+      auc_background = BK
+    )
+  })
+
   output$results <- renderDT({
-    .data <- if (!is.null(r_results()))
-      select(
-        r_results(),
-        gene_set = Set, dataset, brain_region, comparison, auc = AUC, pval,
-        n_genes, n_genes_background = n_genes_bk, genes = Feats,
-        auc_background = BK
-      )
+    .data <- if (!is.null(r_results_formatted()))
+      r_results_formatted()
     else
       tibble(Set = character())
     datatable(
@@ -312,13 +318,18 @@ mod_server_driad_prediction <- function(
             targets = match(
               c("genes", "auc_background", "n_genes_background"),
               colnames(.data)
-            ),
+            ) %>%
+              na.omit() %>%
+              magrittr::subtract(1),
             visible = FALSE
           )
         )
       )
     )
   })
+
+  callModule(mod_server_download_button, "csv", r_data = r_results_formatted, type = "csv")
+  callModule(mod_server_download_button, "excel", r_data = r_results_formatted, type = "excel")
 }
 
 #' Server module providing UI elements for DRIAD gene set evaluation
@@ -488,7 +499,12 @@ mod_ui_driad_prediction <- function(id) {
             outputId = ns("plots")
           )
         )
+      ),
+      footer = tagList(
+        mod_ui_download_button(ns("csv"), "Download CSV"),
+        mod_ui_download_button(ns("excel"), "Download Excel")
       )
-    )
+    ) %>%
+      margin(b = 3)
   )
 }
