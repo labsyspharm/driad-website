@@ -246,7 +246,7 @@ mod_server_driad_prediction <- function(
     NULL
   })
 
-  output$plots <- renderPlot({
+  r_plot <- reactive({
     if (is.null(r_results()))
       return(
         ggplot(tibble()) +
@@ -278,9 +278,14 @@ mod_server_driad_prediction <- function(
       coord_cartesian(clip = "off")
   })
 
+  output$plots <- renderPlot({
+    req(r_plot())
+    r_plot()
+  })
+
   r_results_formatted <- reactive({
     if (is.null(r_results()))
-      return(NULL)
+      return(tibble(Set = character()))
     select(
       r_results(),
       gene_set = Set, dataset, brain_region, comparison, auc = AUC, pval,
@@ -290,10 +295,8 @@ mod_server_driad_prediction <- function(
   })
 
   output$results <- renderDT({
-    .data <- if (!is.null(r_results_formatted()))
-      r_results_formatted()
-    else
-      tibble(Set = character())
+    req(r_results_formatted())
+    .data <- r_results_formatted()
     datatable(
       .data,
       style = "bootstrap4",
@@ -328,8 +331,24 @@ mod_server_driad_prediction <- function(
     )
   })
 
+  r_zip_dl <- reactive({
+    req(r_plot(), r_results_formatted())
+    c(
+      tempfile("plot", fileext = ".pdf") %T>%
+        ggsave(r_plot()),
+      tempfile("table", fileext = ".csv") %T>%
+        {
+          write_csv(
+            mutate(r_results_formatted(), across(where(is.list), map_chr, paste, collapse = ";")),
+            .
+          )
+        }
+    )
+  })
+
   callModule(mod_server_download_button, "csv", r_data = r_results_formatted, type = "csv")
   callModule(mod_server_download_button, "excel", r_data = r_results_formatted, type = "excel")
+  callModule(mod_server_download_button, "zip", r_data = r_zip_dl, type = "zip")
 }
 
 #' Server module providing UI elements for DRIAD gene set evaluation
@@ -502,7 +521,8 @@ mod_ui_driad_prediction <- function(id) {
       ),
       footer = tagList(
         mod_ui_download_button(ns("csv"), "Download CSV"),
-        mod_ui_download_button(ns("excel"), "Download Excel")
+        mod_ui_download_button(ns("excel"), "Download Excel"),
+        mod_ui_download_button(ns("zip"), "Download table and plot")
       )
     ) %>%
       margin(b = 3)
