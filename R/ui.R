@@ -54,6 +54,10 @@ app_main <- container(
         "post-mortem samples of AD patients collected by the",
         a("AMP-AD consortium.", href = "https://adknowledgeportal.synapse.org", target = "_blank")
       ),
+      p(
+        "The background and methodology are described in the preprint",
+        a("Rodriguez and Hug et.al.", href = "https://doi.org/10.1101/2020.05.15.098749", target = "_blank")
+      ),
       h2(
         "Gene set AD progression prediction"
       ),

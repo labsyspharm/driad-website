@@ -408,8 +408,31 @@ mod_ui_driad_prediction <- function(id) {
         ),
         formGroup(
           label = "Datasets",
-          help = paste(
-            "Datasets to run prediction task on."
+          help = tagList(
+            p("AD datasets to run prediction task on.") %>%
+              margin(b = 2),
+            tags$ul(
+              tags$li(
+                "ROSMAP - The Religious Orders Study and Memory and Aging Project",
+                tags$ul(
+                  tags$li(
+                    "Dorsal prefrontal cortex"
+                  )
+                )
+              ),
+              tags$li(
+                "MSBB - The Mount Sinai/JJ Peters VA Medical Center Brain Bank",
+                tags$ul(
+                  c(
+                    "BM10 - anterior prefrontal cortext",
+                    "BM22 - superior temporal gyrus",
+                    "BM36 - prerhinal cortext",
+                    "BM44 - pars opercularis"
+                  ) %>%
+                    map(tags$li)
+                )
+              )
+            )
           ),
           checkbarInput(
             id = ns("datasets"),
