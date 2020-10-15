@@ -58,9 +58,61 @@ app_main <- container(
         "The background and methodology are described in the preprint",
         a("Rodriguez and Hug et.al.", href = "https://doi.org/10.1101/2020.05.15.098749", target = "_blank")
       ),
+      buttonInput(
+        id = "explanation_toggle",
+        label = "Show/hide details",
+        class = "btn-primary"
+      ),
+      collapsePane(
+        id = "explanation_pane",
+        tags$figure(
+          class = "figure",
+          img(
+            class = "figure-img img-fluid mx-auto d-block",
+            style = "max-width: 40em;",
+            src = "driad/img/machine_learning_framework-01.png"
+          ),
+          tags$figcaption(
+            class = "figure-caption text-justify",
+            "Overview of the machine learning framework used to establish potential",
+            "associations between gene lists and Alzheimers Disease. (i) The",
+            "framework accepts as input gene lists derived from experimental data",
+            "or extracted from database resources or literature. (ii) Given a gene",
+            "expression matrix, the framework subsamples it to a particular gene",
+            "list of interest, and (iii) subsequently trains and evaluates through",
+            "cross-validation a predictor of Braak stage of disease. (iv) The",
+            "process is repeated for randomly-selected gene lists of equal lengths",
+            "to determine whether predictor performance associated with the gene",
+            "list of interest is significantly higher than whats expected by chance."
+          )
+        ),
+        tags$figure(
+          class = "figure",
+          img(
+            class = "figure-img img-fluid mx-auto d-block",
+            style = "max-width: 25em;",
+            src = "driad/img/brain_regions-01.png"
+          ),
+          tags$figcaption(
+            class = "figure-caption text-justify",
+            "AMP-AD datasets used by the machine learning framework. The three",
+            "datasets used to evaluate the predictive power of gene lists are",
+            "provided by The Religious Orders Study and Memory and Aging Project",
+            "(ROSMAP), The Mayo Clinic Brain Bank (MAYO) and The Mount Sinai/JJ",
+            "Peters VA Medical Center Brain Bank (MSBB). The schematic highlights",
+            "regions of the brain that are represented in each dataset. The MSBB",
+            "dataset spans four distinct regions, which are designated using",
+            "Brodmann (BM) area codes."
+          )
+        ) %>%
+          margin(b = 0),
+        class = "border border-info rounded"
+      ) %>%
+        padding(a = 3),
       h2(
         "Gene set AD progression prediction"
-      ),
+      ) %>%
+        margin(t = 3),
       mod_ui_driad_prediction("main")
     )
   ) %>%
