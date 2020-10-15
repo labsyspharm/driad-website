@@ -26,6 +26,7 @@ Imports:
     future,
     promises,
     ggridges,
-    shinyjs
+    shinyjs,
+    ipc
 Depends: 
     R (>= 2.10)

@@ -7,7 +7,9 @@ library(future)
 library(ggridges)
 library(memoise)
 library(shinyjs)
+library(ipc)
 plan(multicore)
+# plan(sequential)
 
 MAX_GENE_SETS <- 50
 MIN_N <- 5
@@ -36,32 +38,53 @@ prediction_task_data <- memoise(
   }
 )
 
-run_driad <- function(gene_sets, datasets, comparisons) {
-  # browser()
-  prediction_tasks %>%
-    filter(paste0(dataset, " - ", brain_region) %in% datasets, comparison %in% comparisons) %>%
+run_driad <- function(gene_sets, datasets, comparisons, progress = NULL) {
+  has_progress <- !is.null(progress)
+  if (has_progress)
+    progress$set(value = 0, message = "Loading data")
+  task_data <- prediction_tasks %>%
+    filter(
+      paste0(dataset, " - ", brain_region) %in% datasets,
+      comparison %in% comparisons
+    ) %>%
     rowwise() %>%
     mutate(
       task = prediction_task_data(id)["task"],
-      pairs = prediction_task_data(id)["pairs"],
-      res = evalGeneSets(
-        gene_sets, task, pairs, nBK = 0
-      ) %>%
-        mutate(
-          n_genes = map_int(Feats, length),
-          n_genes_bk = BK_GENE_SET_SIZES[findInterval(n_genes, BK_GENE_SET_SIZES)]
-        ) %>%
-        list()
+      pairs = prediction_task_data(id)["pairs"]
     ) %>%
-    ungroup() %>%
+    ungroup()
+  if (has_progress)
+    progress$set(value = 0.1, message = "Performing prediction tasks")
+  # browser()
+  tasks <- task_data %>%
+    crossing(enframe(gene_sets, "Set", "Feats"))
+  n_tasks <- nrow(tasks)
+  tasks %>%
+    mutate(
+      res = pmap(
+        .,
+        function(Set, Feats, task, pairs, dataset, brain_region, ...) {
+          if (has_progress)
+            progress$inc(
+              0.9/n_tasks,
+              detail = paste0(Set, " - ", dataset, " ", brain_region)
+            )
+          evalGeneSet(Feats, task, pairs, nBK = 0) %>%
+            select(-Feats, -Name)
+        }
+      )
+    ) %>%
     unnest(res) %>%
-    select(-BK) %>%
+    mutate(
+      n_genes = map_int(Feats, length),
+      n_genes_bk = BK_GENE_SET_SIZES[findInterval(n_genes, BK_GENE_SET_SIZES)]
+    ) %>%
     inner_join(
       rename(background_gene_sets_auc, BK = background_auc),
       by = c("dataset", "brain_region", "comparison", "n_genes_bk" = "gene_set_size")
     ) %>%
     mutate(pval = map2_dbl(AUC, BK, ~`if`(length(.y) == 0, NA, mean(.x <= .y)))) %>%
-    select(-id)
+    select(-id, -task, -pairs)
 }
 
 #' Server module providing UI logic for DRIAD gene set evaluation
@@ -190,8 +213,8 @@ mod_server_driad_prediction <- function(
     )
     disable(id = "submit")
     removeCssClass(class = "d-none", selector = paste0("#", ns("submit"), " .spinner-border"))
-    p <- Progress$new()
-    p$set(value = NULL, message = "Evaluating gene sets...")
+    p <- AsyncProgress$new()
+    p$set(value = 0, message = "Starting...")
     valid_gene_sets <- r_gene_sets_valid()
     datasets <- input$datasets
     comparison <- input$comparison
@@ -200,7 +223,8 @@ mod_server_driad_prediction <- function(
         run_driad(
           valid_gene_sets,
           datasets,
-          comparison
+          comparison,
+          progress = p
         )
       },
       packages = c("dplyr", "magrittr", "DRIAD"),
@@ -234,7 +258,7 @@ mod_server_driad_prediction <- function(
           ) +
           theme_void()
       )
-    .data <- select(r_results(), -task, -pairs) %>%
+    .data <- r_results() %>%
       mutate(dataset = paste0(dataset, " - ", brain_region)) %>%
       mutate(across(c(Set, dataset), as.factor))
     # browser()
@@ -256,7 +280,12 @@ mod_server_driad_prediction <- function(
 
   output$results <- renderDT({
     .data <- if (!is.null(r_results()))
-      select(r_results(), -task, -pairs)
+      select(
+        r_results(),
+        gene_set = Set, dataset, brain_region, comparison, auc = AUC, pval,
+        n_genes, n_genes_background = n_genes_bk, genes = Feats,
+        auc_background = BK
+      )
     else
       tibble(Set = character())
     datatable(
@@ -264,8 +293,10 @@ mod_server_driad_prediction <- function(
       style = "bootstrap4",
       selection = "none",
       extensions = "Buttons",
+      rownames = FALSE,
       options = list(
         dom = DT_DOM,
+        scrollX = TRUE,
         buttons = list(
           list(
             extend = "colvis",
@@ -279,7 +310,7 @@ mod_server_driad_prediction <- function(
         columnDefs = list(
           list(
             targets = match(
-              c("Feats", "BK"),
+              c("genes", "auc_background", "n_genes_background"),
               colnames(.data)
             ),
             visible = FALSE
