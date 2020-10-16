@@ -4,4 +4,7 @@ app_server <- function(input, output, session) {
   observeEvent(input$explanation_toggle, {
     toggleCollapsePane("explanation_pane")
   })
+  observeEvent(input$funding, {
+    showModal(modal_funding)
+  })
 }

@@ -119,7 +119,8 @@ mod_server_driad_prediction <- function(
     switch(
       input$single_multi_choice,
       single = {
-        req(input$gene_set_single)
+        if (is.null(input$gene_set_single) || input$gene_set_single == "")
+          return(list("user_gene_set" = character()))
         input$gene_set_single %>%
           trimws() %>%
           str_split("[\\s,;]+") %>%
@@ -174,15 +175,14 @@ mod_server_driad_prediction <- function(
   })
 
   output$gene_set_info <- renderUI({
-    req(r_gene_sets_valid(), r_gene_sets_cleaned())
     gene_set_lengths <- map_int(r_gene_sets_cleaned()[["valid"]], length)
     invalid_symbols <- r_gene_sets_cleaned()[["invalid"]] %>%
       reduce(union) %>%
       unique()
     tagList(
-      if (length(r_gene_sets_valid()) == 0)
-        p(class = "text-danger", "No valid gene sets.")
-      else
+      if (length(r_input_message()) > 0)
+        p(class = "text-danger", paste(r_input_message(), collapse = "<br>") %>% HTML()),
+      if (length(r_gene_sets_valid()) > 0)
         p(length(r_gene_sets_valid()), "valid gene set(s)."),
       p(
         length(gene_set_lengths),
@@ -199,31 +199,34 @@ mod_server_driad_prediction <- function(
     )
   })
 
+  r_input_message <- reactive({
+    c(
+      if (!length(input$datasets) > 0) "Must select at least one dataset.",
+      if (!length(input$comparison) > 0) "Must select at least one comparison",
+      if (!length(r_gene_sets_valid()) > 0) "No valid gene sets."
+    )
+  })
+
   r_results <- reactiveVal()
 
   observeEvent(input$submit, {
-    validate(
-      need(length(input$datasets) > 0, "Must select at least one dataset.")
+    input <- list(
+      valid_gene_sets = r_gene_sets_valid(),
+      datasets = input$datasets,
+      comparisons = input$comparison
     )
-    validate(
-      need(
-        length(r_gene_sets_valid()) > 0,
-        paste("Must supply a gene set with at least", MIN_N, "valid gene.")
-      )
-    )
+    if (length(r_input_message()) > 0)
+      return()
     disable(id = "submit")
     removeCssClass(class = "d-none", selector = paste0("#", ns("submit"), " .spinner-border"))
     p <- AsyncProgress$new()
     p$set(value = 0, message = "Starting...")
-    valid_gene_sets <- r_gene_sets_valid()
-    datasets <- input$datasets
-    comparison <- input$comparison
     res_future <- future(
       {
         run_driad(
-          valid_gene_sets,
-          datasets,
-          comparison,
+          input[["valid_gene_sets"]],
+          input[["datasets"]],
+          input[["comparisons"]],
           progress = p
         )
       },
@@ -273,7 +276,7 @@ mod_server_driad_prediction <- function(
         aes(x = AUC, xend = AUC, y = as.numeric(Set), yend = as.numeric(Set) + 0.9),
         data = .data,
         color = "red",
-        lwd = 2
+        lwd = 1
       ) +
       coord_cartesian(clip = "off")
   })
@@ -428,7 +431,7 @@ mod_ui_driad_prediction <- function(id) {
             "Can contrast early (A), intermediate (B) and late (C) disease stages,",
             "as defined by the Braak staging through neuropathological assessment"
           ),
-          radiobarInput(
+          checkbarInput(
             id = ns("comparison"),
             label = NULL,
             choices = c("AB", "AC", "BC"),
@@ -456,7 +459,7 @@ mod_ui_driad_prediction <- function(id) {
                   c(
                     "BM10 - anterior prefrontal cortext",
                     "BM22 - superior temporal gyrus",
-                    "BM36 - prerhinal cortext",
+                    "BM36 - perirhinal cortext",
                     "BM44 - pars opercularis"
                   ) %>%
                     map(tags$li)
@@ -490,6 +493,10 @@ mod_ui_driad_prediction <- function(id) {
           "Submit"
         ),
         class = "btn-primary"
+      ),
+      textOutput(
+        ns("submit_error"),
+        inline = TRUE
       )
     ) %>%
       margin(b = 3),

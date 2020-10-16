@@ -1,5 +1,15 @@
 library(shinyjs)
 
+modal_funding <- modal(
+  id = "modal_funding",
+  header = "Funding",
+  size = "sm",
+  p(
+    "We gratefully acknowledge support by NIA grant R01 AG058063: Harnessing",
+    "Diverse BioInformatic Approaches to Repurpose Drugs for Alzheimers Disease."
+  )
+)
+
 app_navbar <- navbar(
   # class = "navbar-dark bg-dark",
   a(
@@ -11,19 +21,13 @@ app_navbar <- navbar(
     class = "navbar-nav",
     linkInput(
       class = "nav-link",
-      id = "about",
-      label = "About"
-    ) %>%
-      margin(l = 2),
-    linkInput(
-      class = "nav-link",
       id = "funding",
       label = "Funding"
     ) %>%
       margin(l = 2),
     tags$a(
       class = "nav-link",
-      href = "https://forms.gle/dSpCJSsbaavTbCkP6",
+      href = "https://github.com/labsyspharm/driad-website/issues",
       target = "_blank",
       icon("comments", class = "fa-lg"),
       " Feedback"
@@ -31,7 +35,7 @@ app_navbar <- navbar(
       margin(l = 2),
     tags$a(
       class = "nav-link",
-      href = "https://github.com/labsyspharm/sms-website",
+      href = "https://github.com/labsyspharm/driad-website",
       target = "_blank",
       icon("github", class = "fa-lg")
     ) %>%
