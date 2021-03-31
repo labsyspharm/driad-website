@@ -59,8 +59,13 @@ app_main <- container(
         a("AMP-AD consortium.", href = "https://adknowledgeportal.synapse.org", target = "_blank")
       ),
       p(
-        "The background and methodology are described in the preprint",
-        a("Rodriguez and Hug et.al.", href = "https://doi.org/10.1101/2020.05.15.098749", target = "_blank")
+        "The background and methodology are described in our publication",
+        a(
+          "Rodriguez, S., Hug, C., Todorov, P. et al.",
+          "Machine learning identifies candidates for drug repurposing in",
+          "Alzheimer’s disease. Nat Commun 12, 1033 (2021).",
+          href = "https://doi.org/10.1038/s41467-021-21330-0", target = "_blank"
+        )
       ),
       buttonInput(
         id = "explanation_toggle",
