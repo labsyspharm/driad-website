@@ -298,10 +298,10 @@ mod_server_driad_prediction <- function(
     )
   })
 
-  output$results <- renderDT({
+  output$results <- DT::renderDataTable({
     req(r_results_formatted())
     .data <- r_results_formatted()
-    datatable(
+    DT::datatable(
       .data,
       style = "bootstrap4",
       selection = "none",
@@ -516,7 +516,7 @@ mod_ui_driad_prediction <- function(id) {
       navContent(
         navPane(
           id = ns("pane_table"),
-          dataTableOutput(
+          DT::dataTableOutput(
             outputId = ns("results")
           )
         ),
@@ -524,7 +524,13 @@ mod_ui_driad_prediction <- function(id) {
           id = ns("pane_plots"),
           plotOutput(
             outputId = ns("plots")
-          )
+          ),
+          p("The plots show a distribution of how well random gene sets perform",
+            "in the AD prediction task. Random gene sets are chosen to be the same",
+            "size as the query gene set. The red line indicates how well the",
+            "user-submitted query gene set perfomed. It's position relative to",
+            "random gene sets is an indicator of how predictive the query",
+            "gene set is for AD progression.")
         )
       ),
       footer = tagList(
